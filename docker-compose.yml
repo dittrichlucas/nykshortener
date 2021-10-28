@@ -14,3 +14,10 @@ services:
             - '8081:8081'
         depends_on:
             - redis
+# Acredito que vou ter que especificar a rede quando estiver usando o zscaler
+networks:
+  default:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.25.0.0/16

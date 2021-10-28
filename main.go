@@ -1,74 +1,38 @@
 package main
 
 import (
-	"context"
-	"encoding/json"
-	"fmt"
 	"log"
 	"net/http"
-	"strings"
+	"text/template"
 
-	"github.com/go-redis/redis"
+	"github.com/dittrichlucas/nykshortener/handler"
+	"github.com/dittrichlucas/nykshortener/store"
 )
 
-type URLCreationRequest struct {
-	LongURL string `json:"long_url" binding:"required"`
-	UserID  string `json:"user_id" binding:"required"`
-}
+const port = ":3000"
 
-type URLCreationResponse struct {
-	Message  string `json:"message"`
-	ShortURL string `json:"short_url"`
+type TodoPageData struct {
+	PageTitle string
+	Name      string
 }
-
-type saveData struct {
-	userId   string
-	longURL  string
-	shortURL string
-}
-
-var ctx = context.Background()
 
 func main() {
-	rdb := store.Redis()
-	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == "POST" {
-			d := json.NewDecoder(r.Body)
+	store.Redis()
 
-			var data URLCreationRequest
-			if err := d.Decode(&data); err != nil {
-				panic(err)
-			}
+	fs := http.FileServer(http.Dir("./static"))
+	http.Handle("/", fs)
 
-			shortURL := GenerateShortLink(data.LongURL, data.UserID)
+	tmpl := template.Must(template.ParseFiles("./static/generated.html"))
+	http.HandleFunc("/generated", func(w http.ResponseWriter, r *http.Request) {
+		test := handler.CreateShortURL(w, r)
 
-			payload := URLCreationResponse{
-				Message:  "short url created successfully",
-				ShortURL: "http://localhost:3000/" + shortURL,
-			}
-
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusCreated)
-			json.NewEncoder(w).Encode(payload)
-
-			err := rdb.Set(ctx, shortURL, data.LongURL, 0).Err()
-			if err != nil {
-				panic(err)
-			}
-
-		} else if r.Method == "GET" {
-			s := strings.TrimPrefix(r.URL.Path, "/")
-
-			redirectURL, err := rdb.Get(ctx, s).Result()
-			if err == redis.Nil {
-				fmt.Fprintf(w, "URL not found")
-			} else if err != nil {
-				panic(err)
-			}
-
-			http.Redirect(w, r, redirectURL, http.StatusSeeOther)
+		data := TodoPageData{
+			PageTitle: "nykshortener",
+			Name:      test.ShortURL,
 		}
+		tmpl.Execute(w, data)
 	})
 
-	log.Fatal(http.ListenAndServe(":3000", nil))
+	log.Printf("Server is running on port %s\n", port)
+	log.Fatal(http.ListenAndServe(port, nil))
 }
